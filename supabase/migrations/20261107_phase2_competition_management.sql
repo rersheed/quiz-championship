@@ -1,0 +1,3 @@
+-- Applied remotely via Supabase MCP as phase2_competition_management.
+-- Kept here for repository history. Do not re-run blindly against production.
+-- See live database for authoritative state.
