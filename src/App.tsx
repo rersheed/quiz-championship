@@ -68,6 +68,7 @@ function App() {
   const [teams, setTeams] = useState<Record<string, Team[]>>(demoTeams);
   const [schools, setSchools] = useState<SchoolRecord[]>([]);
   const [schedule, setSchedule] = useState<ScheduleEvent[]>([]);
+  const [sponsors, setSponsors] = useState<{ id: string; name: string; tier: string; logo_url?: string | null }[]>([]);
   const [rules, setRules] = useState<ScoringRules>(demoRules);
   const [category, setCategory] = useState('secondary');
   const [groupId, setGroupId] = useState('a');
@@ -154,13 +155,14 @@ function App() {
         return;
       }
       const comp = competitions[0] as Competition;
-      const [cats, grps, entries, schoolRows, ruleRows, scheduleRows] = await Promise.all([
+      const [cats, grps, entries, schoolRows, ruleRows, scheduleRows, sponsorRows] = await Promise.all([
         supabase!.from('categories').select('*').eq('competition_id', comp.id),
         supabase!.from('competition_groups').select('*').eq('competition_id', comp.id),
         supabase!.from('leaderboard_entries').select('group_id,team_id,name,short_name,score').eq('competition_id', comp.id),
         supabase!.from('schools').select('*').eq('competition_id', comp.id).order('name'),
         supabase!.from('scoring_rules').select('*').eq('competition_id', comp.id).limit(1),
         supabase!.from('schedule_events').select('*').eq('competition_id', comp.id).order('sort_order'),
+        supabase!.from('sponsors').select('id,name,tier,logo_url').eq('competition_id', comp.id).eq('active', true).order('sort_order'),
       ]);
       if (!alive) return;
       setCompetition(comp);
@@ -176,6 +178,7 @@ function App() {
       if (schoolRows.data) setSchools(schoolRows.data as SchoolRecord[]);
       if (ruleRows.data?.[0]) setRules(ruleRows.data[0] as ScoringRules);
       if (scheduleRows.data) setSchedule(scheduleRows.data as ScheduleEvent[]);
+      if (sponsorRows.data) setSponsors(sponsorRows.data);
       setLoading(false);
       if (grps.error || entries.error) setNotice('Some competition information could not be loaded.');
     };
@@ -363,6 +366,8 @@ function App() {
             setNotice={setNotice}
             refreshAll={refreshAll}
             connection={connection}
+            schedule={schedule}
+            setSchedule={setSchedule}
           />
         )}
         {settingsOpen && (
@@ -606,6 +611,25 @@ function App() {
                             <span>{ev.starts_at ? new Date(ev.starts_at).toLocaleString() : 'TBA'}</span>
                             <small>{ev.location || competition.venue || 'Venue TBA'}</small>
                           </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {!!sponsors.length && (
+                  <section className="section container">
+                    <div className="section-head">
+                      <div>
+                        <div className="eyebrow">PARTNERS</div>
+                        <h2>Sponsors & partners</h2>
+                        <p>Organizations supporting the championship.</p>
+                      </div>
+                    </div>
+                    <div className="sponsor-grid">
+                      {sponsors.map((s) => (
+                        <div className="sponsor-card" key={s.id}>
+                          {s.logo_url ? <img src={s.logo_url} alt="" /> : <strong>{s.name}</strong>}
+                          <small>{s.tier} sponsor</small>
                         </div>
                       ))}
                     </div>

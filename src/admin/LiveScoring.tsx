@@ -406,17 +406,62 @@ export default function LiveScoring({
 
       <div style={{ marginTop: 22 }}>
         <h3>Recent scoring activity</h3>
+        <p style={{ color: '#6b7a90', fontSize: 12, marginTop: 0 }}>
+          Administrators can undo the latest action for a team (applies the inverse adjustment as a correction).
+        </p>
         <div className="activity-list">
-          {events.map((ev) => {
+          {events.map((ev, index) => {
             const team = ranking.find((t) => t.id === ev.team_id) || Object.values(teams).flat().find((t) => t.id === ev.team_id);
+            const canUndo = canManageStatus && index === 0 && currentGroup && currentGroup.status !== 'final' && ev.action_type !== 'correction';
             return (
               <div className="activity-item" key={ev.id}>
                 <span>
                   <strong>{team?.short_name || 'Team'}</strong> · {ev.action_label || ev.action_type} ({ev.delta > 0 ? '+' : ''}
                   {ev.delta})
                 </span>
-                <span>
+                <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                   {ev.before_points} → {ev.after_points}
+                  {canUndo && (
+                    <button
+                      className="outline-btn small"
+                      type="button"
+                      disabled={Boolean(busyKey)}
+                      onClick={async () => {
+                        if (!currentGroup || !window.confirm(`Undo ${ev.action_label || 'this action'} for ${team?.short_name || 'team'}?`)) return;
+                        setBusyKey(`undo:${ev.id}`);
+                        if (!supabase) {
+                          setTeams((prev) => ({
+                            ...prev,
+                            [currentGroup.id]: (prev[currentGroup.id] || []).map((t) =>
+                              t.id === ev.team_id ? { ...t, score: Math.max(0, t.score - ev.delta) } : t,
+                            ),
+                          }));
+                          setBusyKey(null);
+                          return;
+                        }
+                        const { error } = await supabase.rpc('adjust_score', {
+                          p_group_id: currentGroup.id,
+                          p_team_id: ev.team_id,
+                          p_delta: -ev.delta,
+                        });
+                        if (error) setNotice(error.message);
+                        else {
+                          setNotice('Correction applied.');
+                          await refreshAll();
+                          const { data: evs } = await supabase
+                            .from('score_events')
+                            .select('id,group_id,team_id,delta,before_points,after_points,action_type,action_label,configured_points,created_at')
+                            .eq('group_id', currentGroup.id)
+                            .order('created_at', { ascending: false })
+                            .limit(20);
+                          if (evs) setEvents(evs as ScoreEvent[]);
+                        }
+                        setBusyKey(null);
+                      }}
+                    >
+                      Undo
+                    </button>
+                  )}
                 </span>
               </div>
             );

@@ -25,12 +25,14 @@ import {
   type Competition,
   type Division,
   type Group,
+  type ScheduleEvent,
   type SchoolRecord,
   type ScoringRules,
   type Team,
 } from '../data';
 import LiveScoring from './LiveScoring';
 import ScoringConfig from './ScoringConfig';
+import SettingsPanel from './SettingsPanel';
 import './admin.css';
 
 type AdminPage =
@@ -81,9 +83,11 @@ type Props = {
   setNotice: (v: string) => void;
   refreshAll: () => Promise<void>;
   connection: string;
+  schedule: ScheduleEvent[];
+  setSchedule: React.Dispatch<React.SetStateAction<ScheduleEvent[]>>;
 };
 
-const NAV: { id: AdminPage; label: string; icon: React.ReactNode; soon?: boolean }[] = [
+const NAV: { id: AdminPage; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Dashboard Overview', icon: <LayoutDashboard size={16} /> },
   { id: 'live', label: 'Live Scoring', icon: <Radio size={16} /> },
   { id: 'schools', label: 'Schools & Teams', icon: <Users size={16} /> },
@@ -93,7 +97,7 @@ const NAV: { id: AdminPage; label: string; icon: React.ReactNode; soon?: boolean
   { id: 'results', label: 'Qualification & Results', icon: <Eye size={16} /> },
   { id: 'scoring', label: 'Scoring Configuration', icon: <Settings2 size={16} /> },
   { id: 'branding', label: 'Competition Branding', icon: <Palette size={16} /> },
-  { id: 'settings', label: 'Settings', icon: <Settings2 size={16} />, soon: true },
+  { id: 'settings', label: 'Settings', icon: <Settings2 size={16} /> },
 ];
 
 function parseCsv(text: string): { name: string; short_name: string; city?: string }[] {
@@ -141,6 +145,8 @@ export default function AdminDashboard(props: Props) {
     setNotice,
     refreshAll,
     connection,
+    schedule,
+    setSchedule,
   } = props;
 
   const [page, setPage] = useState<AdminPage>('overview');
@@ -316,15 +322,13 @@ export default function AdminDashboard(props: Props) {
             className={'admin-nav-btn ' + (page === item.id ? 'active' : '')}
             type="button"
             onClick={() => {
-              if (item.soon) setNotice('Settings module is in development.');
-              else if (item.id === 'branding') setSettingsOpen(true);
+              if (item.id === 'branding') setSettingsOpen(true);
               else if (item.id === 'results') setView('results');
               else go(item.id);
             }}
           >
             {item.icon}
             {item.label}
-            {item.soon && <span className="soon">SOON</span>}
           </button>
         ))}
       </aside>
@@ -416,6 +420,17 @@ export default function AdminDashboard(props: Props) {
               rules={rules}
               setRules={setRules}
               role={role}
+              setNotice={setNotice}
+            />
+          )}
+
+          {page === 'settings' && (
+            <SettingsPanel
+              supabase={supabase}
+              competitionId={competition.id}
+              role={role}
+              schedule={schedule}
+              setSchedule={setSchedule}
               setNotice={setNotice}
             />
           )}

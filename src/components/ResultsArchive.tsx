@@ -1,5 +1,6 @@
-import { Crown, Medal, Printer, Trophy } from 'lucide-react';
+import { Crown, Download, Medal, Printer, Trophy } from 'lucide-react';
 import { qualificationQuota, sorted, type Competition, type Division, type Group, type ScoringRules, type Team } from '../data';
+import { downloadWinnerCertificate } from '../lib/certificate';
 
 type Props = {
   competition: Competition;
@@ -57,6 +58,21 @@ export default function ResultsArchive({ competition, categories, groups, teams,
                     <strong>{t.short_name}</strong>
                     <span>{label}</span>
                     <em>{t.score} pts</em>
+                    <button
+                      className="outline-btn small"
+                      type="button"
+                      onClick={() =>
+                        downloadWinnerCertificate({
+                          competition,
+                          schoolName: t.name,
+                          placeLabel: label,
+                          categoryName: cat,
+                          score: t.score,
+                        })
+                      }
+                    >
+                      <Download size={14} /> Certificate
+                    </button>
                   </div>
                 );
               })}
