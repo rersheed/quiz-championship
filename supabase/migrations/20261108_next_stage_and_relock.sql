@@ -1,0 +1,2 @@
+-- Applied remotely as next_stage_and_relock_scoring.
+-- Adds create_stage_from_template, relock_group_scoring, update_school, and duplicate-safe register_school.

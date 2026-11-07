@@ -340,6 +340,49 @@ export default function LiveScoring({
           <button className="outline-btn small" type="button" onClick={() => setStatus('final')} disabled={currentGroup?.status === 'final'}>
             Finalize
           </button>
+          {(currentGroup?.status === 'live' || currentGroup?.status === 'paused') && (
+            <button
+              className="outline-btn small"
+              type="button"
+              onClick={async () => {
+                const reason = window.prompt('Documented reason required to refresh locked scoring rules for this live group:');
+                if (!reason?.trim()) return;
+                if (!supabase) {
+                  setConfig({
+                    correct_points: rules.correct_points ?? rules.score_step,
+                    incorrect_penalty: rules.incorrect_penalty ?? 0,
+                    score_step: rules.score_step,
+                    max_adjustment: rules.max_adjustment,
+                    source: 'competition_default',
+                  });
+                  setLocked(true);
+                  setNotice('Demo: scoring snapshot refreshed.');
+                  return;
+                }
+                const { data, error } = await supabase.rpc('relock_group_scoring', {
+                  p_group_id: currentGroup.id,
+                  p_reason: reason.trim(),
+                });
+                if (error) setNotice(error.message);
+                else {
+                  if (data) {
+                    setConfig({
+                      correct_points: Number(data.correct_points),
+                      incorrect_penalty: Number(data.incorrect_penalty),
+                      score_step: Number(data.score_step ?? data.correct_points),
+                      max_adjustment: Number(data.max_adjustment ?? 100),
+                      source: String(data.source || 'locked_snapshot'),
+                    });
+                    setLocked(true);
+                  }
+                  setNotice('Scoring rules relocked for this group.');
+                  await refreshAll();
+                }
+              }}
+            >
+              Relock scoring (exception)
+            </button>
+          )}
         </div>
       )}
 

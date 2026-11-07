@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   Award,
   Eye,
@@ -155,12 +155,42 @@ export default function AdminDashboard(props: Props) {
   const [incomingTeams, setIncomingTeams] = useState(16);
   const [planGroupSize, setPlanGroupSize] = useState(8);
   const [planQualify, setPlanQualify] = useState(5);
+  const [templates, setTemplates] = useState<{ id: string; stage_name: string; stage_order: number; group_size: number; groups_count: number; qualify_per_group: number; advance_total: number }[]>([]);
+  const [sourceStage, setSourceStage] = useState('');
+  const [editSchoolId, setEditSchoolId] = useState<string | null>(null);
 
   const logo = competition.logo_url || DEFAULT_LOGO;
   const canAdmin = !supabase || (authorized && role !== 'scorekeeper');
   const openingGroups = groups.filter((g) => g.category_id === category && g.stage === 'Opening Round');
   const mathErrors = useMemo(() => validateProgressionMath(rules, Math.max(openingGroups.length, 1)), [rules, openingGroups.length]);
   const stagePlan = useMemo(() => planStageMath(incomingTeams, planGroupSize, planQualify), [incomingTeams, planGroupSize, planQualify]);
+  const categoryStages = useMemo(() => [...new Set(groups.filter((g) => g.category_id === category).map((g) => g.stage))], [groups, category]);
+
+  useEffect(() => {
+    let alive = true;
+    const loadTemplates = async () => {
+      if (!supabase || competition.id === 'demo') {
+        if (alive) {
+          setTemplates([
+            { id: 't1', stage_name: 'Opening Round', stage_order: 1, group_size: 8, groups_count: 2, qualify_per_group: 3, advance_total: 6 },
+            { id: 't2', stage_name: 'Semifinal', stage_order: 2, group_size: 6, groups_count: 1, qualify_per_group: 4, advance_total: 4 },
+            { id: 't3', stage_name: 'Final', stage_order: 3, group_size: 4, groups_count: 1, qualify_per_group: 3, advance_total: 3 },
+          ]);
+        }
+        return;
+      }
+      const { data } = await supabase
+        .from('stage_templates')
+        .select('id,stage_name,stage_order,group_size,groups_count,qualify_per_group,advance_total')
+        .eq('competition_id', competition.id)
+        .order('stage_order');
+      if (alive && data) setTemplates(data);
+    };
+    void loadTemplates();
+    return () => {
+      alive = false;
+    };
+  }, [supabase, competition.id]);
   const filteredSchools = useMemo(() => {
     const q = schoolQuery.trim().toLowerCase();
     return schools
@@ -500,23 +530,77 @@ export default function AdminDashboard(props: Props) {
               <div className="school-admin-list">
                 {filteredSchools.map((s) => (
                   <div className="school-admin-row" key={s.id}>
-                    <div><strong>{s.name}</strong><small>{s.short_name}{s.city ? ` · ${s.city}` : ''}{s.active === false ? ' · inactive' : ''}</small></div>
-                    <button
-                      className="outline-btn small"
-                      type="button"
-                      onClick={async () => {
-                        if (!window.confirm(`Deactivate ${s.name}? History is preserved.`)) return;
-                        if (!supabase) {
-                          setSchools((prev) => prev.map((x) => (x.id === s.id ? { ...x, active: false } : x)));
-                          return;
-                        }
-                        const { error } = await supabase.from('schools').update({ active: false }).eq('id', s.id);
-                        if (error) setNotice(error.message);
-                        else { setNotice('School deactivated.'); await refreshAll(); }
-                      }}
-                    >
-                      Deactivate
-                    </button>
+                    <div>
+                      {editSchoolId === s.id ? (
+                        <form
+                          className="inline-form"
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            if (!supabase) {
+                              setSchools((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: schoolName || s.name, short_name: schoolShort || s.short_name, city: schoolCity || s.city } : x)));
+                              setEditSchoolId(null);
+                              return;
+                            }
+                            const { error } = await supabase.rpc('update_school', {
+                              p_school_id: s.id,
+                              p_name: schoolName || s.name,
+                              p_short_name: schoolShort || s.short_name,
+                              p_city: schoolCity || s.city || null,
+                              p_logo_url: s.logo_url || null,
+                            });
+                            if (error) setNotice(error.message);
+                            else {
+                              setNotice('School updated.');
+                              setEditSchoolId(null);
+                              setSchoolName('');
+                              setSchoolShort('');
+                              setSchoolCity('');
+                              await refreshAll();
+                            }
+                          }}
+                        >
+                          <input defaultValue={s.name} onChange={(e) => setSchoolName(e.target.value)} required />
+                          <input defaultValue={s.short_name} onChange={(e) => setSchoolShort(e.target.value)} />
+                          <input defaultValue={s.city || ''} onChange={(e) => setSchoolCity(e.target.value)} />
+                          <button className="primary-btn" type="submit">Save</button>
+                        </form>
+                      ) : (
+                        <>
+                          <strong>{s.name}</strong>
+                          <small>{s.short_name}{s.city ? ` · ${s.city}` : ''}{s.active === false ? ' · inactive' : ''}</small>
+                        </>
+                      )}
+                    </div>
+                    <div className="quick-actions">
+                      <button
+                        className="outline-btn small"
+                        type="button"
+                        onClick={() => {
+                          setEditSchoolId(s.id);
+                          setSchoolName(s.name);
+                          setSchoolShort(s.short_name);
+                          setSchoolCity(s.city || '');
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="outline-btn small"
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Deactivate ${s.name}? History is preserved.`)) return;
+                          if (!supabase) {
+                            setSchools((prev) => prev.map((x) => (x.id === s.id ? { ...x, active: false } : x)));
+                            return;
+                          }
+                          const { error } = await supabase.from('schools').update({ active: false }).eq('id', s.id);
+                          if (error) setNotice(error.message);
+                          else { setNotice('School deactivated.'); await refreshAll(); }
+                        }}
+                      >
+                        Deactivate
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {!filteredSchools.length && <p className="empty-board">No schools match this filter.</p>}
@@ -585,7 +669,7 @@ export default function AdminDashboard(props: Props) {
           {page === 'rounds' && canAdmin && (
             <div className="admin-panel">
               <h2>Competition rounds</h2>
-              <p>Plan intermediate elimination stages mathematically. Advancement never drops teams arbitrarily.</p>
+              <p>Plan and create stages from templates. Advancement never drops teams arbitrarily.</p>
               <div className="admin-toolbar">
                 <label>Incoming teams<input type="number" min={2} value={incomingTeams} onChange={(e) => setIncomingTeams(Number(e.target.value))} /></label>
                 <label>Group size<input type="number" min={2} value={planGroupSize} onChange={(e) => setPlanGroupSize(Number(e.target.value))} /></label>
@@ -597,12 +681,54 @@ export default function AdminDashboard(props: Props) {
               ) : (
                 <div className="math-ok">Default opening→semifinal path is valid for {openingGroups.length} opening group(s) with current rules.</div>
               )}
-              <div className="quick-actions">
-                <button className="primary-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Create semifinal from finalized opening groups?')) void advance('semi'); }}>Advance opening → semifinal</button>
-                <button className="outline-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Create grand final from finalized semifinal?')) void advance('final'); }}>Advance semifinal → final</button>
+
+              <h3 style={{ marginTop: 22 }}>Stage templates</h3>
+              <div className="group-admin-grid">
+                {templates.map((t) => (
+                  <div className="group-admin-card" key={t.id}>
+                    <strong>{t.stage_name}</strong>
+                    <small>{t.groups_count} × {t.group_size} · top {t.qualify_per_group} → {t.advance_total}</small>
+                    <label style={{ fontSize: 11, fontWeight: 800 }}>
+                      Source stage (optional)
+                      <select value={sourceStage} onChange={(e) => setSourceStage(e.target.value)}>
+                        <option value="">Unassigned teams</option>
+                        {categoryStages.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </label>
+                    <button
+                      className="primary-btn"
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!window.confirm(`Create ${t.stage_name} for this category using the template math?`)) return;
+                        if (!supabase) return setNotice('Stage creation requires Supabase.');
+                        setBusy(true);
+                        const { data, error } = await supabase.rpc('create_stage_from_template', {
+                          p_competition_id: competition.id,
+                          p_category_id: category,
+                          p_template_id: t.id,
+                          p_source_stage: sourceStage || null,
+                        });
+                        setBusy(false);
+                        if (error) setNotice(error.message);
+                        else {
+                          setNotice(`Created ${data} group(s) for ${t.stage_name}.`);
+                          await refreshAll();
+                        }
+                      }}
+                    >
+                      Create stage
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="quick-actions" style={{ marginTop: 18 }}>
+                <button className="outline-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Create semifinal from finalized opening groups?')) void advance('semi'); }}>Legacy: opening → semifinal</button>
+                <button className="outline-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Create grand final from finalized semifinal?')) void advance('final'); }}>Legacy: semifinal → final</button>
                 {currentGroup?.status === 'final' && (
                   <button
-                    className="outline-btn"
+                    className="primary-btn"
                     type="button"
                     disabled={busy}
                     onClick={async () => {
