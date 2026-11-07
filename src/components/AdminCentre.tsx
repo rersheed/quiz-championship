@@ -54,7 +54,7 @@ type Props = {
   updateScore: (team: Team, delta: number) => Promise<void>;
   finalize: () => Promise<void>;
   setSettingsOpen: (v: boolean) => void;
-  setView: (v: 'home' | 'live' | 'schools' | 'admin' | 'display') => void;
+  setView: (v: 'home' | 'live' | 'schools' | 'results' | 'admin' | 'display') => void;
   setNotice: (v: string) => void;
   refreshAll: () => Promise<void>;
 };

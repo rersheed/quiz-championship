@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import AdminCentre from './components/AdminCentre';
+import ResultsArchive from './components/ResultsArchive';
 import {
   DEFAULT_LOGO,
   demoCategories,
@@ -35,13 +36,14 @@ import {
   type Competition,
   type Division,
   type Group,
+  type ScheduleEvent,
   type SchoolRecord,
   type ScoringRules,
   type Team,
 } from './data';
 import { supabase } from './lib/supabase';
 
-type View = 'home' | 'live' | 'schools' | 'admin' | 'display';
+type View = 'home' | 'live' | 'schools' | 'results' | 'admin' | 'display';
 
 function Brand({ competition, small = false }: { competition: Competition; small?: boolean }) {
   const logo = competition.logo_url || DEFAULT_LOGO;
@@ -66,6 +68,7 @@ function App() {
   const [groups, setGroups] = useState<Group[]>(demoGroups);
   const [teams, setTeams] = useState<Record<string, Team[]>>(demoTeams);
   const [schools, setSchools] = useState<SchoolRecord[]>([]);
+  const [schedule, setSchedule] = useState<ScheduleEvent[]>([]);
   const [rules, setRules] = useState<ScoringRules>(demoRules);
   const [category, setCategory] = useState('secondary');
   const [groupId, setGroupId] = useState('a');
@@ -152,12 +155,13 @@ function App() {
         return;
       }
       const comp = competitions[0] as Competition;
-      const [cats, grps, entries, schoolRows, ruleRows] = await Promise.all([
+      const [cats, grps, entries, schoolRows, ruleRows, scheduleRows] = await Promise.all([
         supabase!.from('categories').select('*').eq('competition_id', comp.id),
         supabase!.from('competition_groups').select('*').eq('competition_id', comp.id),
         supabase!.from('leaderboard_entries').select('group_id,team_id,name,short_name,score').eq('competition_id', comp.id),
         supabase!.from('schools').select('*').eq('competition_id', comp.id).order('name'),
         supabase!.from('scoring_rules').select('*').eq('competition_id', comp.id).limit(1),
+        supabase!.from('schedule_events').select('*').eq('competition_id', comp.id).order('sort_order'),
       ]);
       if (!alive) return;
       setCompetition(comp);
@@ -172,6 +176,7 @@ function App() {
       if (entries.data) applyLeaderboard(entries.data);
       if (schoolRows.data) setSchools(schoolRows.data as SchoolRecord[]);
       if (ruleRows.data?.[0]) setRules(ruleRows.data[0] as ScoringRules);
+      if (scheduleRows.data) setSchedule(scheduleRows.data as ScheduleEvent[]);
       setLoading(false);
       if (grps.error || entries.error) setNotice('Some competition information could not be loaded.');
     };
@@ -326,6 +331,7 @@ function App() {
     ['home', 'Overview'],
     ['live', 'Live leaderboard'],
     ['schools', 'Schools'],
+    ['results', 'Results'],
     ['admin', 'Control centre'],
   ] as [View, string][];
 
@@ -494,6 +500,31 @@ function App() {
                     </button>
                   </div>
                 </section>
+                {!!schedule.length && (
+                  <section className="section container">
+                    <div className="section-head">
+                      <div>
+                        <div className="eyebrow">SCHEDULE</div>
+                        <h2>Competition timetable</h2>
+                        <p>Key sessions for the {competition.year} championship.</p>
+                      </div>
+                    </div>
+                    <div className="schedule-list">
+                      {schedule.map((ev) => (
+                        <div className="schedule-item" key={ev.id}>
+                          <div>
+                            <strong>{ev.title}</strong>
+                            <p>{ev.description}</p>
+                          </div>
+                          <div className="schedule-meta">
+                            <span>{ev.starts_at ? new Date(ev.starts_at).toLocaleString() : 'TBA'}</span>
+                            <small>{ev.location || competition.venue || 'Venue TBA'}</small>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
                 <section className="cta-section container">
                   <div>
                     <div className="eyebrow light">LEARNING THROUGH COMPETITION</div>
@@ -589,6 +620,10 @@ function App() {
                   ))}
                 </div>
               </div>
+            )}
+
+            {view === 'results' && (
+              <ResultsArchive competition={competition} categories={categories} groups={groups} teams={teams} rules={rules} />
             )}
 
             {view === 'admin' && (
