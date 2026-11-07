@@ -1,0 +1,2 @@
+-- Applied remotely: configurable_scoring_actions + scoring_config_audit_insert_policy
+-- Authoritative state lives in the Supabase project. This file is repository history only.

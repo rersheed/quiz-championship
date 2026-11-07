@@ -49,6 +49,8 @@ export type ScoringRules = {
   competition_id: string;
   category_id?: string | null;
   score_step: number;
+  correct_points?: number;
+  incorrect_penalty?: number;
   max_adjustment: number;
   opening_group_size: number;
   opening_qualify: number;
@@ -135,6 +137,8 @@ export const demoRules: ScoringRules = {
   id: 'demo-rules',
   competition_id: 'demo',
   score_step: 5,
+  correct_points: 5,
+  incorrect_penalty: 0,
   max_adjustment: 100,
   opening_group_size: 8,
   opening_qualify: 5,

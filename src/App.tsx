@@ -13,7 +13,6 @@ import {
   Monitor,
   Radio,
   RefreshCw,
-  Settings2,
   Shield,
   Sparkles,
   Trophy,
@@ -22,7 +21,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
-import AdminCentre from './components/AdminCentre';
+import AdminDashboard from './admin/AdminDashboard';
 import ResultsArchive from './components/ResultsArchive';
 import {
   DEFAULT_LOGO,
@@ -246,29 +245,6 @@ function App() {
     if (found) setGroupId(found.id);
   };
 
-  const updateScore = async (team: Team, delta: number) => {
-    if (!currentGroup) return;
-    if (!supabase) {
-      setTeams((prev) => ({
-        ...prev,
-        [currentGroup.id]: (prev[currentGroup.id] || []).map((t) =>
-          t.id === team.id ? { ...t, score: Math.max(0, t.score + delta) } : t,
-        ),
-      }));
-      return;
-    }
-    if (!authorized) {
-      setNotice('Only authorized scorekeepers may change competition scores.');
-      return;
-    }
-    const { error } = await supabase.rpc('adjust_score', {
-      p_group_id: currentGroup.id,
-      p_team_id: team.id,
-      p_delta: delta,
-    });
-    if (error) setNotice(error.message);
-  };
-
   const authenticate = async (e: FormEvent) => {
     e.preventDefault();
     if (!supabase) {
@@ -334,6 +310,116 @@ function App() {
     ['results', 'Results'],
     ['admin', 'Control centre'],
   ] as [View, string][];
+
+  if (view === 'admin') {
+    return (
+      <>
+        {notice && (
+          <div className="toast" role="alert">
+            {notice}
+            <button aria-label="Dismiss" onClick={() => setNotice('')}>
+              <X size={15} />
+            </button>
+          </div>
+        )}
+        {loading ? (
+          <div className="loading">
+            <RefreshCw className="spin" /> Loading championship...
+          </div>
+        ) : (
+          <AdminDashboard
+            supabase={supabase}
+            competition={competition}
+            setCompetition={setCompetition}
+            categories={categories}
+            setCategories={setCategories}
+            groups={groups}
+            setGroups={setGroups}
+            teams={teams}
+            setTeams={setTeams}
+            schools={schools}
+            setSchools={setSchools}
+            rules={rules}
+            setRules={setRules}
+            category={category}
+            chooseCategory={chooseCategory}
+            groupId={groupId}
+            setGroupId={setGroupId}
+            currentGroup={currentGroup}
+            currentTeams={currentTeams}
+            user={user}
+            authorized={authorized}
+            role={role}
+            email={email}
+            setEmail={setEmail}
+            password={password}
+            setPassword={setPassword}
+            authBusy={authBusy}
+            authenticate={authenticate}
+            signOut={signOut}
+            finalize={finalize}
+            setSettingsOpen={setSettingsOpen}
+            setView={setView}
+            setNotice={setNotice}
+            refreshAll={refreshAll}
+            connection={connection}
+          />
+        )}
+        {settingsOpen && (
+          <div className="modal-overlay" onClick={() => setSettingsOpen(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <h2>Competition branding</h2>
+                <button aria-label="Close" onClick={() => setSettingsOpen(false)}>
+                  <X />
+                </button>
+              </div>
+              <form onSubmit={saveBrand} className="brand-form">
+                <label>
+                  Official competition title
+                  <input value={competition.title} onChange={(e) => setCompetition((c) => ({ ...c, title: e.target.value }))} required />
+                </label>
+                <label>
+                  Short title
+                  <input value={competition.short_title} onChange={(e) => setCompetition((c) => ({ ...c, short_title: e.target.value }))} required />
+                </label>
+                <label>
+                  Tagline / slogan
+                  <input
+                    value={competition.slogan || competition.tagline}
+                    onChange={(e) => setCompetition((c) => ({ ...c, slogan: e.target.value, tagline: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  Organizer
+                  <input value={competition.organizer || ''} onChange={(e) => setCompetition((c) => ({ ...c, organizer: e.target.value }))} />
+                </label>
+                <label>
+                  Venue
+                  <input value={competition.venue || ''} onChange={(e) => setCompetition((c) => ({ ...c, venue: e.target.value }))} />
+                </label>
+                <label>
+                  Year
+                  <input type="number" value={competition.year} onChange={(e) => setCompetition((c) => ({ ...c, year: Number(e.target.value) }))} />
+                </label>
+                <label>
+                  Competition logo URL
+                  <input type="url" placeholder="https://..." value={competition.logo_url || ''} onChange={(e) => setCompetition((c) => ({ ...c, logo_url: e.target.value }))} />
+                </label>
+                <label>
+                  Brand accent colour
+                  <input type="color" value={competition.primary_color} onChange={(e) => setCompetition((c) => ({ ...c, primary_color: e.target.value }))} />
+                </label>
+                <button className="primary-btn" type="submit">
+                  <Check size={16} /> Save branding
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className={'site ' + (view === 'display' ? 'display-site' : '')} style={{ '--gold': competition.primary_color || '#3D93CF' } as CSSProperties}>
@@ -624,61 +710,6 @@ function App() {
 
             {view === 'results' && (
               <ResultsArchive competition={competition} categories={categories} groups={groups} teams={teams} rules={rules} />
-            )}
-
-            {view === 'admin' && (
-              <div className="container page">
-                <div className="page-heading">
-                  <div>
-                    <div className="eyebrow">
-                      <Settings2 size={15} /> EVENT OPERATIONS
-                    </div>
-                    <h1>Competition control centre</h1>
-                    <p>Manage scoring, schools, groups, rules and official tournament progression.</p>
-                  </div>
-                  {authorized && role !== 'scorekeeper' && (
-                    <button className="outline-btn" onClick={() => setSettingsOpen(true)}>
-                      <Settings2 size={17} /> Edit branding
-                    </button>
-                  )}
-                </div>
-                <AdminCentre
-                  supabase={supabase}
-                  competition={competition}
-                  setCompetition={setCompetition}
-                  categories={categories}
-                  setCategories={setCategories}
-                  groups={groups}
-                  setGroups={setGroups}
-                  teams={teams}
-                  schools={schools}
-                  setSchools={setSchools}
-                  rules={rules}
-                  setRules={setRules}
-                  category={category}
-                  chooseCategory={chooseCategory}
-                  groupId={groupId}
-                  setGroupId={setGroupId}
-                  currentGroup={currentGroup}
-                  currentTeams={currentTeams}
-                  user={user}
-                  authorized={authorized}
-                  role={role}
-                  email={email}
-                  setEmail={setEmail}
-                  password={password}
-                  setPassword={setPassword}
-                  authBusy={authBusy}
-                  authenticate={authenticate}
-                  signOut={signOut}
-                  updateScore={updateScore}
-                  finalize={finalize}
-                  setSettingsOpen={setSettingsOpen}
-                  setView={setView}
-                  setNotice={setNotice}
-                  refreshAll={refreshAll}
-                />
-              </div>
             )}
 
             {view === 'display' && (
