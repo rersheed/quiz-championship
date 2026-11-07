@@ -3,7 +3,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.competitions (
  id uuid primary key default gen_random_uuid(), title text not null, short_title text not null,
  tagline text not null default 'Celebrating Knowledge. Inspiring Excellence.',
- year integer not null default 2026, venue text, logo_url text, primary_color text not null default '#b9924b',
+ year integer not null default 2026, venue text, logo_url text, primary_color text not null default '#3D93CF',
  starts_at timestamptz, created_at timestamptz not null default now()
 );
 create table if not exists public.categories (

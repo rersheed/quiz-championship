@@ -336,7 +336,7 @@ function App() {
   ] as [View, string][];
 
   return (
-    <div className={'site ' + (view === 'display' ? 'display-site' : '')} style={{ '--gold': competition.primary_color || '#b9924b' } as CSSProperties}>
+    <div className={'site ' + (view === 'display' ? 'display-site' : '')} style={{ '--gold': competition.primary_color || '#3D93CF' } as CSSProperties}>
       {view !== 'display' && (
         <>
           <div className="topline">
@@ -790,7 +790,7 @@ function App() {
                 Secondary colour
                 <input
                   type="color"
-                  value={competition.secondary_color || '#0e1831'}
+                  value={competition.secondary_color || '#0F2040'}
                   onChange={(e) => setCompetition((c) => ({ ...c, secondary_color: e.target.value }))}
                 />
               </label>
