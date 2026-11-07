@@ -70,6 +70,8 @@ create policy "Public groups" on public.competition_groups for select to anon,au
 create policy "Public group assignments" on public.group_teams for select to anon,authenticated using(true);
 create policy "Public scores" on public.scores for select to anon,authenticated using(true);
 create policy "Own admin record" on public.admins for select to authenticated using(user_id=(select auth.uid()));
+create policy "Admins read score events" on public.score_events for select to authenticated
+ using(exists(select 1 from public.admins a where a.user_id=(select auth.uid()) and a.role in ('super_admin','admin','scorekeeper')));
 -- No direct score writes. Privileged functions enforce authorization and auditability.
 create or replace function public.adjust_score(p_group_id uuid,p_team_id uuid,p_delta integer)
 returns integer language plpgsql security definer set search_path='' as $$
@@ -103,6 +105,7 @@ grant execute on function public.adjust_score(uuid,uuid,integer) to authenticate
 grant execute on function public.finalize_group(uuid) to authenticated;
 grant select on public.competitions,public.categories,public.schools,public.teams,public.competition_groups,public.group_teams,public.scores,public.leaderboard_entries to anon,authenticated;
 grant select on public.admins to authenticated;
+grant select on public.score_events to authenticated;
 -- Subscribe to the scores and competition_groups tables after enabling the Realtime publication.
 do $$ begin
  alter publication supabase_realtime add table public.scores;

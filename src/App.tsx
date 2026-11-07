@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState, type FormEvent, type CSSProperties } from
 import { AnimatePresence, motion } from 'framer-motion';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { ArrowRight, Award, CalendarDays, Check, CircleHelp, Crown, Eye, GraduationCap, LayoutDashboard, LockKeyhole, LogOut, Medal, Menu, Monitor, Radio, RefreshCw, Settings2, Shield, Sparkles, Trophy, Users, Wifi, WifiOff, X } from 'lucide-react';
-import { demoCategories, demoCompetition, demoGroups, demoTeams, sorted, type Competition, type Division, type Group, type Team } from './data';
+import { DEFAULT_LOGO, demoCategories, demoCompetition, demoGroups, demoTeams, sorted, type Competition, type Division, type Group, type Team } from './data';
 
 const url=import.meta.env.VITE_SUPABASE_URL;const key=import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const supabase:SupabaseClient|null=url&&key?createClient(url,key):null;
 type View='home'|'live'|'schools'|'admin'|'display';
-function Brand({competition,small=false}:{competition:Competition;small?:boolean}){return <div className={'brand '+(small?'brand-small':'')}><div className="brandmark">{competition.logo_url?<img src={competition.logo_url} alt="Competition logo"/>:<Trophy size={small?22:27} strokeWidth={2.4}/>}</div><div className="brandcopy"><strong>IMJ <span>GROUP</span></strong><small>QUIZ CHAMPIONSHIP</small></div></div>}
+function Brand({competition,small=false}:{competition:Competition;small?:boolean}){const logo=competition.logo_url||DEFAULT_LOGO;return <div className={'brand '+(small?'brand-small':'')}><div className="brandmark has-logo"><img src={logo} alt="IMJ Group logo"/></div><div className="brandcopy"><strong>IMJ <span>GROUP</span></strong><small>QUIZ CHAMPIONSHIP</small></div></div>}
 function App(){
  const [competition,setCompetition]=useState<Competition>(demoCompetition),[categories,setCategories]=useState<Division[]>(demoCategories),[groups,setGroups]=useState<Group[]>(demoGroups),[teams,setTeams]=useState<Record<string,Team[]>>(demoTeams),[category,setCategory]=useState('secondary'),[groupId,setGroupId]=useState('a'),[view,setView]=useState<View>('home'),[user,setUser]=useState<string|null>(null),[authorized,setAuthorized]=useState(false),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[authBusy,setAuthBusy]=useState(false),[loading,setLoading]=useState(Boolean(supabase)),[notice,setNotice]=useState(''),[connection,setConnection]=useState(supabase?'connecting':'demo'),[mobileMenu,setMobileMenu]=useState(false),[settingsOpen,setSettingsOpen]=useState(false);
  const selectedGroups=groups.filter(g=>g.category_id===category),currentGroup=groups.find(g=>g.id===groupId)||selectedGroups[0],currentTeams=sorted(teams[currentGroup?.id]||[]),liveCount=groups.filter(g=>g.status==='live').length;const activeCategory=categories.find(c=>c.id===category);
