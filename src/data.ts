@@ -31,6 +31,9 @@ export type Group = {
   stage: string;
   status: string;
   competition_id: string;
+  scoring_snapshot?: Record<string, unknown> | null;
+  results_approved?: boolean;
+  capacity?: number | null;
 };
 
 export type SchoolRecord = {

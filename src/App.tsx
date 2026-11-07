@@ -986,11 +986,17 @@ function Leaderboard({
       </div>
       <div className="board-foot">
         <div>
-          <Shield size={15} /> {group?.status === 'final' ? 'Official finalized results' : 'Live scores subject to verification'}
+          <Shield size={15} />{' '}
+          {group?.status === 'final'
+            ? group.results_approved
+              ? 'Official approved results'
+              : 'Finalized — awaiting official approval'
+            : 'Provisional live standings'}
         </div>
         <div>
           <span className="tiny-green" />
           {teams.length} TEAMS · TOP {quota} QUALIFY
+          {group?.status !== 'final' || !group.results_approved ? ' · UNOFFICIAL' : ''}
         </div>
       </div>
     </div>

@@ -21,7 +21,10 @@ export default function ScoringConfig({ supabase, competitionId, categories, rul
   const [bonusPoints, setBonusPoints] = useState(2);
   const [bonusDesc, setBonusDesc] = useState('');
   const [scopeCategory, setScopeCategory] = useState('');
+  const [scopeStage, setScopeStage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [audits, setAudits] = useState<{ id: number; change_summary: string; payload: Record<string, unknown>; created_at: string }[]>([]);
+  const [reason, setReason] = useState('');
 
   const loadBonuses = async () => {
     if (!supabase || competitionId === 'demo') {
@@ -30,11 +33,16 @@ export default function ScoringConfig({ supabase, competitionId, categories, rul
         { id: 'b2', competition_id: 'demo', name: 'Speed Bonus', points: 3, active: true, sort_order: 2 },
         { id: 'b3', competition_id: 'demo', name: 'Special Question', points: 5, active: true, sort_order: 3 },
       ]);
+      setAudits([]);
       return;
     }
-    const { data, error } = await supabase.from('bonus_types').select('*').eq('competition_id', competitionId).order('sort_order');
-    if (error) setNotice(error.message);
-    else setBonuses((data || []) as BonusType[]);
+    const [bonusRes, auditRes] = await Promise.all([
+      supabase.from('bonus_types').select('*').eq('competition_id', competitionId).order('sort_order'),
+      supabase.from('scoring_config_audits').select('id,change_summary,payload,created_at').eq('competition_id', competitionId).order('created_at', { ascending: false }).limit(20),
+    ]);
+    if (bonusRes.error) setNotice(bonusRes.error.message);
+    else setBonuses((bonusRes.data || []) as BonusType[]);
+    if (auditRes.data) setAudits(auditRes.data as typeof audits);
   };
 
   useEffect(() => {
@@ -73,16 +81,20 @@ export default function ScoringConfig({ supabase, competitionId, categories, rul
         await supabase.from('scoring_config_audits').insert({
           competition_id: competitionId,
           actor_id: uid,
-          change_summary: 'Updated scoring rules',
+          change_summary: reason.trim() || 'Updated scoring rules',
           payload: {
             correct_points: rules.correct_points,
             incorrect_penalty: rules.incorrect_penalty,
+            max_adjustment: rules.max_adjustment,
+            reason: reason.trim() || null,
           },
         });
       }
     }
     setBusy(false);
+    setReason('');
     setNotice(error ? error.message : 'Scoring configuration saved.');
+    await loadBonuses();
   };
 
   const addBonus = async (e: FormEvent) => {
@@ -111,6 +123,7 @@ export default function ScoringConfig({ supabase, competitionId, categories, rul
     const { error } = await supabase.from('bonus_types').insert({
       competition_id: competitionId,
       category_id: scopeCategory || null,
+      stage: scopeStage || null,
       name: bonusName.trim(),
       points: bonusPoints,
       description: bonusDesc || null,
@@ -161,8 +174,13 @@ export default function ScoringConfig({ supabase, competitionId, categories, rul
   return (
     <div className="config-grid">
       <div className="admin-panel">
-        <h2>Answer marks & penalties</h2>
-        <p>These values power the Live Scoring buttons. The server resolves them — the browser cannot invent point amounts.</p>
+        <h2>A. Standard scoring</h2>
+        <p>Effective values are resolved server-side. Live groups lock a snapshot when they go live so past actions keep their meaning.</p>
+        <div className="config-banner">
+          <span>Preview Correct +{rules.correct_points ?? rules.score_step}</span>
+          <span>{(rules.incorrect_penalty ?? 0) > 0 ? `Penalty −${rules.incorrect_penalty}` : 'No penalty'}</span>
+          <span>Max ±{rules.max_adjustment}</span>
+        </div>
         <form className="config-form" onSubmit={saveRules}>
           <label>
             Correct answer marks
@@ -201,6 +219,10 @@ export default function ScoringConfig({ supabase, competitionId, categories, rul
               onChange={(e) => setRules((r) => ({ ...r, max_adjustment: Number(e.target.value) }))}
             />
           </label>
+          <label>
+            Reason for change
+            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional audit note" />
+          </label>
           <button className="primary-btn" disabled={busy} type="submit">
             <Check size={16} /> Save scoring rules
           </button>
@@ -208,8 +230,8 @@ export default function ScoringConfig({ supabase, competitionId, categories, rul
       </div>
 
       <div className="admin-panel">
-        <h2>Bonus mark types</h2>
-        <p>Scorekeepers pick from this list. Inactive bonuses are hidden from Live Scoring.</p>
+        <h2>B. Bonus marks</h2>
+        <p>Scorekeepers pick from this list. Inactive bonuses are hidden from Live Scoring. Historical awards remain in the audit trail.</p>
         <form className="config-form" onSubmit={addBonus}>
           <label>
             Bonus name
@@ -228,6 +250,15 @@ export default function ScoringConfig({ supabase, competitionId, categories, rul
                   {c.name}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            Stage scope (optional)
+            <select value={scopeStage} onChange={(e) => setScopeStage(e.target.value)}>
+              <option value="">Any stage</option>
+              <option value="Opening Round">Opening Round</option>
+              <option value="Semifinal">Semifinal</option>
+              <option value="Final">Final</option>
             </select>
           </label>
           <label>
@@ -261,6 +292,23 @@ export default function ScoringConfig({ supabase, competitionId, categories, rul
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="admin-panel" style={{ gridColumn: '1 / -1' }}>
+        <h2>D. Audit history</h2>
+        <p>Rule changes are recorded with actor, summary, payload and timestamp.</p>
+        <div className="activity-list">
+          {audits.map((a) => (
+            <div className="activity-item" key={a.id}>
+              <span>
+                <strong>{a.change_summary}</strong>
+                <small style={{ display: 'block', color: '#6b7a90' }}>{JSON.stringify(a.payload)}</small>
+              </span>
+              <span>{new Date(a.created_at).toLocaleString()}</span>
+            </div>
+          ))}
+          {!audits.length && <p className="empty-board">No configuration changes recorded yet.</p>}
         </div>
       </div>
     </div>

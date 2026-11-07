@@ -12,8 +12,10 @@ type Props = {
 
 export default function ResultsArchive({ competition, categories, groups, teams, rules }: Props) {
   const finalized = groups.filter((g) => g.status === 'final');
-  const finals = finalized.filter((g) => g.stage === 'Final');
-  const semis = finalized.filter((g) => g.stage === 'Semifinal');
+  const official = finalized.filter((g) => g.results_approved);
+  const pendingApproval = finalized.filter((g) => !g.results_approved);
+  const finals = (official.length ? official : finalized).filter((g) => g.stage === 'Final');
+  const semis = (official.length ? official : finalized).filter((g) => g.stage === 'Semifinal');
 
   const print = () => window.print();
 
@@ -38,6 +40,11 @@ export default function ResultsArchive({ competition, categories, groups, teams,
           {competition.year} · {competition.venue || 'Official results'}
         </span>
       </div>
+      {!!pendingApproval.length && (
+        <div className="hint">
+          {pendingApproval.length} finalized group(s) await administrator approval before they are marked official.
+        </div>
+      )}
 
       {finals.map((g) => {
         const ranking = sorted(teams[g.id] || []);

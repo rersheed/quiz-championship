@@ -53,12 +53,15 @@
 .score-school small{color:#7a8499;font-size:11px}
 .score-value{font-family:Outfit,sans-serif;font-size:28px;font-weight:900;min-width:64px}
 .score-controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
-.score-btn{min-width:72px;min-height:48px;border-radius:12px;font-weight:900;font-size:14px;padding:10px 14px}
-.score-btn.plus{background:#3D93CF;color:#fff}
-.score-btn.minus{background:#fff;border:1px solid #d7e0ea;color:#9b2c2c}
-.score-btn.bonus{background:#45A849;color:#fff}
+.score-btn{min-width:88px;min-height:52px;border-radius:12px;font-weight:900;font-size:13px;padding:10px 14px;touch-action:manipulation}
+.score-btn.correct{background:#45A849;color:#fff}
+.score-btn.penalty{background:#fff;border:2px solid #c0392b;color:#c0392b}
+.score-btn.bonus{background:linear-gradient(135deg,#d4a017,#f0c14b);color:#3a2a00}
 .score-btn:disabled{opacity:.45}
 .score-btn.busy{opacity:.7}
+.admin-app.sidebar-collapsed{grid-template-columns:84px 1fr}
+.admin-app.sidebar-collapsed .admin-sidebar-brand>div,.admin-app.scorekeeper-mode .admin-sidebar-brand small{display:none}
+.admin-app.scorekeeper-mode .admin-top-right .outline-btn:not(:last-child){display:none}
 .last-action{font-size:11px;color:#6b7a90;max-width:160px}
 .bonus-menu{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #d7e0ea;border-radius:12px;box-shadow:0 16px 40px #0f204028;min-width:220px;z-index:30;padding:6px;display:flex;flex-direction:column;gap:4px}
 .bonus-menu button{background:#f7fafc;border-radius:8px;padding:10px 12px;text-align:left;font-weight:800;font-size:12px;display:flex;justify-content:space-between;gap:10px}

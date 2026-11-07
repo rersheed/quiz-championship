@@ -59,6 +59,8 @@ export default function LiveScoring({
   const [flashId, setFlashId] = useState<string | null>(null);
   const [bonusOpenFor, setBonusOpenFor] = useState<string | null>(null);
   const [lastByTeam, setLastByTeam] = useState<Record<string, string>>({});
+  const [locked, setLocked] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
 
   const categoryGroups = groups.filter((g) => g.category_id === category);
   const stages = [...new Set(categoryGroups.map((g) => g.stage))];
@@ -112,7 +114,14 @@ export default function LiveScoring({
       ]);
       if (!alive) return;
       if (bonusRes.data) setBonuses(bonusRes.data as BonusType[]);
-      if (cfgRes.data?.[0]) setConfig(cfgRes.data[0] as EffectiveScoringConfig);
+      const snap = (currentGroup as Group & { scoring_snapshot?: EffectiveScoringConfig | null })?.scoring_snapshot;
+      if (snap && typeof snap === 'object' && 'correct_points' in (snap as object)) {
+        setConfig({ ...(snap as EffectiveScoringConfig), source: 'locked_snapshot' });
+        setLocked(true);
+      } else if (cfgRes.data?.[0]) {
+        setConfig(cfgRes.data[0] as EffectiveScoringConfig);
+        setLocked(false);
+      }
       if (evRes.data) {
         setEvents(evRes.data as ScoreEvent[]);
         const map: Record<string, string> = {};
@@ -194,6 +203,8 @@ export default function LiveScoring({
       }));
       setLastByTeam((m) => ({ ...m, [team.id]: `${label} (${delta > 0 ? '+' : ''}${delta})` }));
       setFlashId(team.id);
+      setSaveMsg('Saved');
+      window.setTimeout(() => setSaveMsg(''), 1200);
       setBusyKey(null);
       return;
     }
@@ -223,6 +234,8 @@ export default function LiveScoring({
         [currentGroup.id]: (prev[currentGroup.id] || []).map((t) => (t.id === team.id ? { ...t, score: Number(data) } : t)),
       }));
       setFlashId(team.id);
+      setSaveMsg('Saved');
+      window.setTimeout(() => setSaveMsg(''), 1200);
       const { data: ev } = await supabase
         .from('score_events')
         .select('id,group_id,team_id,delta,before_points,after_points,action_type,action_label,configured_points,created_at')
@@ -307,10 +320,13 @@ export default function LiveScoring({
       </div>
 
       <div className="config-banner">
-        <span>Correct: +{config.correct_points}</span>
-        <span>{config.incorrect_penalty > 0 ? `Incorrect: −${config.incorrect_penalty}` : 'Incorrect: No penalty'}</span>
-        <span>Bonuses: {activeBonuses.length} active</span>
-        <span>Rules: {sourceLabel(config.source)}</span>
+        <span>Correct +{config.correct_points}</span>
+        <span>{config.incorrect_penalty > 0 ? `Penalty −${config.incorrect_penalty}` : 'No penalty'}</span>
+        <span>
+          Bonus → {activeBonuses.slice(0, 3).map((b) => `${b.name} +${b.points}`).join(' · ') || 'none'}
+        </span>
+        <span>Rules: {locked ? 'Locked for this live group' : sourceLabel(config.source)}</span>
+        {saveMsg && <span className="admin-chip live">{saveMsg}</span>}
       </div>
 
       {canManageStatus && (
@@ -357,22 +373,22 @@ export default function LiveScoring({
                 <td>
                   <div className="score-controls">
                     <button
-                      className={'score-btn plus ' + (busy ? 'busy' : '')}
+                      className={'score-btn correct ' + (busy ? 'busy' : '')}
                       disabled={Boolean(busyKey) || currentGroup?.status !== 'live'}
                       onClick={() => applyAction(t, 'correct')}
                     >
-                      {busy && busyKey === `${t.id}:correct:` ? <Loader2 className="spin" size={16} /> : `+${config.correct_points}`}
+                      {busy && busyKey === `${t.id}:correct:` ? <Loader2 className="spin" size={16} /> : `Correct +${config.correct_points}`}
                     </button>
                     {config.incorrect_penalty > 0 ? (
                       <button
-                        className={'score-btn minus ' + (busy ? 'busy' : '')}
+                        className={'score-btn penalty ' + (busy ? 'busy' : '')}
                         disabled={Boolean(busyKey) || currentGroup?.status !== 'live'}
                         onClick={() => applyAction(t, 'incorrect')}
                       >
-                        −{config.incorrect_penalty}
+                        Penalty −{config.incorrect_penalty}
                       </button>
                     ) : (
-                      <button className="score-btn minus" disabled title="No penalty configured">
+                      <button className="score-btn penalty" disabled title="No penalty configured">
                         No penalty
                       </button>
                     )}

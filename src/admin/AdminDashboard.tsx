@@ -30,6 +30,7 @@ import {
   type ScoringRules,
   type Team,
 } from '../data';
+import { parseSchoolCsv, planStageMath } from '../lib/csv';
 import LiveScoring from './LiveScoring';
 import ScoringConfig from './ScoringConfig';
 import SettingsPanel from './SettingsPanel';
@@ -87,29 +88,18 @@ type Props = {
   setSchedule: React.Dispatch<React.SetStateAction<ScheduleEvent[]>>;
 };
 
-const NAV: { id: AdminPage; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview', label: 'Dashboard Overview', icon: <LayoutDashboard size={16} /> },
-  { id: 'live', label: 'Live Scoring', icon: <Radio size={16} /> },
-  { id: 'schools', label: 'Schools & Teams', icon: <Users size={16} /> },
-  { id: 'categories', label: 'Categories', icon: <Shield size={16} /> },
-  { id: 'groups', label: 'Groups', icon: <Trophy size={16} /> },
-  { id: 'rounds', label: 'Competition Rounds', icon: <Award size={16} /> },
-  { id: 'results', label: 'Qualification & Results', icon: <Eye size={16} /> },
-  { id: 'scoring', label: 'Scoring Configuration', icon: <Settings2 size={16} /> },
-  { id: 'branding', label: 'Competition Branding', icon: <Palette size={16} /> },
-  { id: 'settings', label: 'Settings', icon: <Settings2 size={16} /> },
+const ALL_NAV: { id: AdminPage; label: string; icon: React.ReactNode; roles: Array<'super_admin' | 'admin' | 'scorekeeper' | 'demo'> }[] = [
+  { id: 'overview', label: 'Dashboard Overview', icon: <LayoutDashboard size={16} />, roles: ['super_admin', 'admin', 'demo'] },
+  { id: 'live', label: 'Live Scoring', icon: <Radio size={16} />, roles: ['super_admin', 'admin', 'scorekeeper', 'demo'] },
+  { id: 'schools', label: 'Schools & Teams', icon: <Users size={16} />, roles: ['super_admin', 'admin', 'demo'] },
+  { id: 'categories', label: 'Categories', icon: <Shield size={16} />, roles: ['super_admin', 'admin', 'demo'] },
+  { id: 'groups', label: 'Groups', icon: <Trophy size={16} />, roles: ['super_admin', 'admin', 'demo'] },
+  { id: 'rounds', label: 'Competition Rounds', icon: <Award size={16} />, roles: ['super_admin', 'admin', 'demo'] },
+  { id: 'results', label: 'Qualification & Results', icon: <Eye size={16} />, roles: ['super_admin', 'admin', 'demo'] },
+  { id: 'scoring', label: 'Scoring Configuration', icon: <Settings2 size={16} />, roles: ['super_admin', 'admin', 'demo'] },
+  { id: 'branding', label: 'Competition Branding', icon: <Palette size={16} />, roles: ['super_admin', 'admin', 'demo'] },
+  { id: 'settings', label: 'Settings', icon: <Settings2 size={16} />, roles: ['super_admin', 'admin', 'demo'] },
 ];
-
-function parseCsv(text: string): { name: string; short_name: string; city?: string }[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (!lines.length) return [];
-  const start = lines[0].toLowerCase().includes('name') ? 1 : 0;
-  return lines.slice(start).map((line) => {
-    const parts = line.split(',').map((p) => p.trim().replace(/^"|"$/g, ''));
-    const name = parts[0] || 'Unnamed School';
-    return { name, short_name: parts[1] || name.slice(0, 24), city: parts[2] };
-  });
-}
 
 export default function AdminDashboard(props: Props) {
   const {
@@ -149,18 +139,34 @@ export default function AdminDashboard(props: Props) {
     setSchedule,
   } = props;
 
-  const [page, setPage] = useState<AdminPage>('overview');
+  const effectiveRole = (!supabase ? 'demo' : role || 'scorekeeper') as 'super_admin' | 'admin' | 'scorekeeper' | 'demo';
+  const isScorekeeper = effectiveRole === 'scorekeeper';
+  const nav = ALL_NAV.filter((item) => item.roles.includes(effectiveRole));
+  const [page, setPage] = useState<AdminPage>(isScorekeeper ? 'live' : 'overview');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [schoolName, setSchoolName] = useState('');
   const [schoolShort, setSchoolShort] = useState('');
   const [schoolCity, setSchoolCity] = useState('');
+  const [schoolQuery, setSchoolQuery] = useState('');
+  const [csvPreview, setCsvPreview] = useState<{ rows: { name: string; short_name: string; city?: string; line: number }[]; errors: string[] } | null>(null);
   const [categoryName, setCategoryName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [incomingTeams, setIncomingTeams] = useState(16);
+  const [planGroupSize, setPlanGroupSize] = useState(8);
+  const [planQualify, setPlanQualify] = useState(5);
 
   const logo = competition.logo_url || DEFAULT_LOGO;
   const canAdmin = !supabase || (authorized && role !== 'scorekeeper');
   const openingGroups = groups.filter((g) => g.category_id === category && g.stage === 'Opening Round');
   const mathErrors = useMemo(() => validateProgressionMath(rules, Math.max(openingGroups.length, 1)), [rules, openingGroups.length]);
+  const stagePlan = useMemo(() => planStageMath(incomingTeams, planGroupSize, planQualify), [incomingTeams, planGroupSize, planQualify]);
+  const filteredSchools = useMemo(() => {
+    const q = schoolQuery.trim().toLowerCase();
+    return schools
+      .filter((s) => !s.category_id || s.category_id === category)
+      .filter((s) => !q || s.name.toLowerCase().includes(q) || s.short_name.toLowerCase().includes(q) || (s.city || '').toLowerCase().includes(q));
+  }, [schools, category, schoolQuery]);
 
   const stats = useMemo(() => {
     const active = groups.filter((g) => g.status === 'live' || g.status === 'paused').length;
@@ -247,15 +253,24 @@ export default function AdminDashboard(props: Props) {
     }
   };
 
-  const importCsv = async (file: File) => {
-    const rows = parseCsv(await file.text());
-    if (!rows.length) return setNotice('No rows found in CSV.');
+  const previewCsv = async (file: File) => {
+    const parsed = parseSchoolCsv(await file.text());
+    setCsvPreview(parsed);
+    if (!parsed.rows.length) setNotice('No valid school rows found in CSV.');
+  };
+
+  const confirmCsvImport = async () => {
+    if (!csvPreview?.rows.length) return;
+    if (csvPreview.errors.length && !window.confirm(`${csvPreview.errors.length} validation warning(s). Import valid rows anyway?`)) return;
+    const rows = csvPreview.rows;
     if (!supabase) {
       setSchools((prev) => [...prev, ...rows.map((r) => ({ id: crypto.randomUUID(), name: r.name, short_name: r.short_name, city: r.city || null, category_id: category, competition_id: competition.id }))]);
+      setCsvPreview(null);
       return setNotice(`Imported ${rows.length} schools in demo mode.`);
     }
     setBusy(true);
     let ok = 0;
+    const failures: string[] = [];
     for (const row of rows) {
       const { error } = await supabase.rpc('register_school', {
         p_competition_id: competition.id,
@@ -265,10 +280,12 @@ export default function AdminDashboard(props: Props) {
         p_logo_url: null,
         p_city: row.city || null,
       });
-      if (!error) ok += 1;
+      if (error) failures.push(`${row.name}: ${error.message}`);
+      else ok += 1;
     }
     setBusy(false);
-    setNotice(`Imported ${ok} of ${rows.length} schools.`);
+    setCsvPreview(null);
+    setNotice(failures.length ? `Imported ${ok}/${rows.length}. ${failures.slice(0, 3).join(' | ')}` : `Imported ${ok} schools.`);
     await refreshAll();
   };
 
@@ -304,23 +321,30 @@ export default function AdminDashboard(props: Props) {
   };
 
   return (
-    <div className="admin-app">
+    <div className={'admin-app ' + (sidebarCollapsed ? 'sidebar-collapsed' : '') + (isScorekeeper ? ' scorekeeper-mode' : '')}>
       <aside className={'admin-sidebar ' + (sidebarOpen ? 'open' : '')}>
         <div className="admin-sidebar-brand">
           <img src={logo} alt="" />
-          <div>
-            <strong>IMJ Control</strong>
-            <small>{competition.year} Championship</small>
-          </div>
+          {!sidebarCollapsed && (
+            <div>
+              <strong>IMJ Control</strong>
+              <small>{competition.year} Championship</small>
+            </div>
+          )}
           <button className="admin-mobile-toggle" style={{ marginLeft: 'auto' }} onClick={() => setSidebarOpen(false)} aria-label="Close menu">
             <X size={16} />
           </button>
         </div>
-        {NAV.map((item) => (
+        <button className="admin-nav-btn" type="button" onClick={() => setSidebarCollapsed((v) => !v)} title="Collapse sidebar">
+          <Menu size={16} />
+          {!sidebarCollapsed && (sidebarCollapsed ? 'Expand' : 'Collapse menu')}
+        </button>
+        {nav.map((item) => (
           <button
             key={item.id}
             className={'admin-nav-btn ' + (page === item.id ? 'active' : '')}
             type="button"
+            title={item.label}
             onClick={() => {
               if (item.id === 'branding') setSettingsOpen(true);
               else if (item.id === 'results') setView('results');
@@ -328,7 +352,7 @@ export default function AdminDashboard(props: Props) {
             }}
           >
             {item.icon}
-            {item.label}
+            {!sidebarCollapsed && item.label}
           </button>
         ))}
       </aside>
@@ -440,11 +464,11 @@ export default function AdminDashboard(props: Props) {
               <div className="admin-hero-row">
                 <div>
                   <h2>Schools & teams</h2>
-                  <p>Register schools per category. CSV columns: name, short_name, city.</p>
+                  <p>Register schools per category. CSV columns: name, short_name, city. Quoted commas are supported.</p>
                 </div>
                 <label className="outline-btn small file-btn">
-                  <FileSpreadsheet size={16} /> Import CSV
-                  <input hidden type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importCsv(f); e.target.value = ''; }} />
+                  <FileSpreadsheet size={16} /> Preview CSV
+                  <input hidden type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) void previewCsv(f); e.target.value = ''; }} />
                 </label>
               </div>
               <div className="admin-toolbar">
@@ -453,6 +477,9 @@ export default function AdminDashboard(props: Props) {
                     {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </label>
+                <label>Search
+                  <input value={schoolQuery} onChange={(e) => setSchoolQuery(e.target.value)} placeholder="Filter schools" />
+                </label>
               </div>
               <form className="inline-form" onSubmit={registerSchool}>
                 <input required placeholder="School name" value={schoolName} onChange={(e) => setSchoolName(e.target.value)} />
@@ -460,12 +487,39 @@ export default function AdminDashboard(props: Props) {
                 <input placeholder="City" value={schoolCity} onChange={(e) => setSchoolCity(e.target.value)} />
                 <button className="primary-btn" disabled={busy} type="submit">Add school</button>
               </form>
+              {csvPreview && (
+                <div className="math-warning" style={{ marginTop: 12 }}>
+                  <p><strong>CSV preview:</strong> {csvPreview.rows.length} valid row(s), {csvPreview.errors.length} warning(s).</p>
+                  {csvPreview.errors.slice(0, 5).map((err) => <p key={err}>{err}</p>)}
+                  <div className="quick-actions">
+                    <button className="primary-btn" type="button" disabled={busy || !csvPreview.rows.length} onClick={() => void confirmCsvImport()}>Confirm import</button>
+                    <button className="outline-btn" type="button" onClick={() => setCsvPreview(null)}>Cancel</button>
+                  </div>
+                </div>
+              )}
               <div className="school-admin-list">
-                {schools.filter((s) => !s.category_id || s.category_id === category).map((s) => (
+                {filteredSchools.map((s) => (
                   <div className="school-admin-row" key={s.id}>
-                    <div><strong>{s.name}</strong><small>{s.short_name}{s.city ? ` · ${s.city}` : ''}</small></div>
+                    <div><strong>{s.name}</strong><small>{s.short_name}{s.city ? ` · ${s.city}` : ''}{s.active === false ? ' · inactive' : ''}</small></div>
+                    <button
+                      className="outline-btn small"
+                      type="button"
+                      onClick={async () => {
+                        if (!window.confirm(`Deactivate ${s.name}? History is preserved.`)) return;
+                        if (!supabase) {
+                          setSchools((prev) => prev.map((x) => (x.id === s.id ? { ...x, active: false } : x)));
+                          return;
+                        }
+                        const { error } = await supabase.from('schools').update({ active: false }).eq('id', s.id);
+                        if (error) setNotice(error.message);
+                        else { setNotice('School deactivated.'); await refreshAll(); }
+                      }}
+                    >
+                      Deactivate
+                    </button>
                   </div>
                 ))}
+                {!filteredSchools.length && <p className="empty-board">No schools match this filter.</p>}
               </div>
             </div>
           )}
@@ -531,15 +585,37 @@ export default function AdminDashboard(props: Props) {
           {page === 'rounds' && canAdmin && (
             <div className="admin-panel">
               <h2>Competition rounds</h2>
-              <p>Advancement is blocked unless qualifier math is exact. No arbitrary eliminations.</p>
+              <p>Plan intermediate elimination stages mathematically. Advancement never drops teams arbitrarily.</p>
+              <div className="admin-toolbar">
+                <label>Incoming teams<input type="number" min={2} value={incomingTeams} onChange={(e) => setIncomingTeams(Number(e.target.value))} /></label>
+                <label>Group size<input type="number" min={2} value={planGroupSize} onChange={(e) => setPlanGroupSize(Number(e.target.value))} /></label>
+                <label>Qualify per group<input type="number" min={1} value={planQualify} onChange={(e) => setPlanQualify(Number(e.target.value))} /></label>
+              </div>
+              <div className={stagePlan.valid ? 'math-ok' : 'math-warning'}><p>{stagePlan.message}</p></div>
               {mathErrors.length ? (
                 <div className="math-warning">{mathErrors.map((err) => <p key={err}>{err}</p>)}</div>
               ) : (
-                <div className="math-ok">Progression math is valid for {openingGroups.length} opening group(s).</div>
+                <div className="math-ok">Default opening→semifinal path is valid for {openingGroups.length} opening group(s) with current rules.</div>
               )}
               <div className="quick-actions">
-                <button className="primary-btn" type="button" disabled={busy} onClick={() => advance('semi')}>Advance opening → semifinal</button>
-                <button className="outline-btn" type="button" disabled={busy} onClick={() => advance('final')}>Advance semifinal → final</button>
+                <button className="primary-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Create semifinal from finalized opening groups?')) void advance('semi'); }}>Advance opening → semifinal</button>
+                <button className="outline-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Create grand final from finalized semifinal?')) void advance('final'); }}>Advance semifinal → final</button>
+                {currentGroup?.status === 'final' && (
+                  <button
+                    className="outline-btn"
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      if (!supabase) return setNotice('Approve results requires Supabase.');
+                      if (!window.confirm('Publish these results as official?')) return;
+                      const { error } = await supabase.rpc('approve_group_results', { p_group_id: currentGroup.id });
+                      if (error) setNotice(error.message);
+                      else { setNotice('Results approved for public official display.'); await refreshAll(); }
+                    }}
+                  >
+                    Approve official results
+                  </button>
+                )}
               </div>
               <p style={{ marginTop: 14 }}>Current group: {currentGroup?.name || '—'} ({currentGroup?.status || '—'})</p>
             </div>
