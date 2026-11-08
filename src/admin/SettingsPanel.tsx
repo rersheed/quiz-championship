@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Trash2, UserPlus } from 'lucide-react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ScheduleEvent } from '../data';
+import ImageField from './ImageField';
 
 type StaffRow = { user_id: string; email: string; role: string; created_at: string };
 type Sponsor = {
@@ -33,16 +34,20 @@ export default function SettingsPanel({ supabase, competitionId, role, schedule,
   const [title, setTitle] = useState('');
   const [when, setWhen] = useState('');
   const [location, setLocation] = useState('');
+  const [editScheduleId, setEditScheduleId] = useState<string | null>(null);
   const [sponsorName, setSponsorName] = useState('');
   const [sponsorTier, setSponsorTier] = useState('partner');
+  const [sponsorLogo, setSponsorLogo] = useState<string | null>(null);
+  const [sponsorWebsite, setSponsorWebsite] = useState('');
+  const [editSponsorId, setEditSponsorId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
     if (!supabase || competitionId === 'demo') {
       setStaff([{ user_id: 'demo', email: 'demo@imj.local', role: 'super_admin', created_at: new Date().toISOString() }]);
       setSponsors([
-        { id: '1', name: 'IMJ Group', tier: 'title', sort_order: 1, active: true },
-        { id: '2', name: 'Education Partner', tier: 'gold', sort_order: 2, active: true },
+        { id: '1', name: 'IMJ Group', tier: 'title', sort_order: 1, active: true, logo_url: null },
+        { id: '2', name: 'Education Partner', tier: 'gold', sort_order: 2, active: true, logo_url: null },
       ]);
       return;
     }
@@ -94,41 +99,59 @@ export default function SettingsPanel({ supabase, competitionId, role, schedule,
     }
   };
 
-  const addSchedule = async (e: FormEvent) => {
+  const resetScheduleForm = () => {
+    setEditScheduleId(null);
+    setTitle('');
+    setWhen('');
+    setLocation('');
+  };
+
+  const saveSchedule = async (e: FormEvent) => {
     e.preventDefault();
     if (!canAdmin || !title.trim()) return;
     if (!supabase) {
-      setSchedule((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          competition_id: competitionId,
-          title: title.trim(),
-          starts_at: when || null,
-          location: location || null,
-          sort_order: prev.length + 1,
-        },
-      ]);
-      setTitle('');
-      setWhen('');
-      setLocation('');
-      return setNotice('Schedule item added in demo mode.');
+      if (editScheduleId) {
+        setSchedule((prev) =>
+          prev.map((ev) =>
+            ev.id === editScheduleId
+              ? { ...ev, title: title.trim(), starts_at: when || null, location: location || null }
+              : ev,
+          ),
+        );
+      } else {
+        setSchedule((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            competition_id: competitionId,
+            title: title.trim(),
+            starts_at: when || null,
+            location: location || null,
+            sort_order: prev.length + 1,
+          },
+        ]);
+      }
+      resetScheduleForm();
+      return setNotice('Schedule item saved in demo mode.');
     }
     setBusy(true);
-    const { error } = await supabase.from('schedule_events').insert({
-      competition_id: competitionId,
+    const payload = {
       title: title.trim(),
       starts_at: when ? new Date(when).toISOString() : null,
       location: location || null,
-      sort_order: schedule.length + 1,
-    });
+    };
+    const { error } = editScheduleId
+      ? await supabase.from('schedule_events').update(payload).eq('id', editScheduleId)
+      : await supabase.from('schedule_events').insert({
+          competition_id: competitionId,
+          ...payload,
+          sort_order: schedule.length + 1,
+        });
     setBusy(false);
     if (error) setNotice(error.message);
     else {
-      setTitle('');
-      setWhen('');
-      setLocation('');
-      setNotice('Schedule item saved.');
+      resetScheduleForm();
+      setNotice(editScheduleId ? 'Schedule item updated.' : 'Schedule item saved.');
       await load();
     }
   };
@@ -144,30 +167,69 @@ export default function SettingsPanel({ supabase, competitionId, role, schedule,
     else await load();
   };
 
-  const addSponsor = async (e: FormEvent) => {
+  const resetSponsorForm = () => {
+    setEditSponsorId(null);
+    setSponsorName('');
+    setSponsorTier('partner');
+    setSponsorLogo(null);
+    setSponsorWebsite('');
+  };
+
+  const saveSponsor = async (e: FormEvent) => {
     e.preventDefault();
     if (!canAdmin || !sponsorName.trim()) return;
     if (!supabase) {
-      setSponsors((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), name: sponsorName.trim(), tier: sponsorTier, sort_order: prev.length + 1, active: true },
-      ]);
-      setSponsorName('');
-      return setNotice('Sponsor added in demo mode.');
+      if (editSponsorId) {
+        setSponsors((prev) =>
+          prev.map((s) =>
+            s.id === editSponsorId
+              ? {
+                  ...s,
+                  name: sponsorName.trim(),
+                  tier: sponsorTier,
+                  logo_url: sponsorLogo,
+                  website_url: sponsorWebsite || null,
+                }
+              : s,
+          ),
+        );
+      } else {
+        setSponsors((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            name: sponsorName.trim(),
+            tier: sponsorTier,
+            sort_order: prev.length + 1,
+            active: true,
+            logo_url: sponsorLogo,
+            website_url: sponsorWebsite || null,
+          },
+        ]);
+      }
+      resetSponsorForm();
+      return setNotice('Sponsor saved in demo mode.');
     }
     setBusy(true);
-    const { error } = await supabase.from('sponsors').insert({
-      competition_id: competitionId,
+    const payload = {
       name: sponsorName.trim(),
       tier: sponsorTier,
-      sort_order: sponsors.length + 1,
+      logo_url: sponsorLogo,
+      website_url: sponsorWebsite.trim() || null,
       active: true,
-    });
+    };
+    const { error } = editSponsorId
+      ? await supabase.from('sponsors').update(payload).eq('id', editSponsorId)
+      : await supabase.from('sponsors').insert({
+          competition_id: competitionId,
+          ...payload,
+          sort_order: sponsors.length + 1,
+        });
     setBusy(false);
     if (error) setNotice(error.message);
     else {
-      setSponsorName('');
-      setNotice('Sponsor saved.');
+      resetSponsorForm();
+      setNotice(editSponsorId ? 'Sponsor updated.' : 'Sponsor saved.');
       await load();
     }
   };
@@ -181,6 +243,14 @@ export default function SettingsPanel({ supabase, competitionId, role, schedule,
     const { error } = await supabase.from('sponsors').delete().eq('id', id);
     if (error) setNotice(error.message);
     else await load();
+  };
+
+  const toLocalInput = (iso?: string | null) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
   return (
@@ -228,9 +298,9 @@ export default function SettingsPanel({ supabase, competitionId, role, schedule,
 
       <div className="admin-panel">
         <h2>Competition schedule</h2>
-        <p>These items appear on the public homepage.</p>
+        <p>Create, edit, or remove homepage schedule items.</p>
         {canAdmin && (
-          <form className="config-form" onSubmit={addSchedule}>
+          <form className="config-form" onSubmit={saveSchedule}>
             <label>
               Title
               <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Opening ceremony" />
@@ -243,9 +313,16 @@ export default function SettingsPanel({ supabase, competitionId, role, schedule,
               Location
               <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Main Hall" />
             </label>
-            <button className="primary-btn" disabled={busy} type="submit">
-              Add schedule item
-            </button>
+            <div className="quick-actions">
+              <button className="primary-btn" disabled={busy} type="submit">
+                {editScheduleId ? 'Save schedule item' : 'Add schedule item'}
+              </button>
+              {editScheduleId && (
+                <button className="outline-btn" type="button" onClick={resetScheduleForm}>
+                  Cancel
+                </button>
+              )}
+            </div>
           </form>
         )}
         <div style={{ marginTop: 16 }}>
@@ -259,9 +336,23 @@ export default function SettingsPanel({ supabase, competitionId, role, schedule,
                 </small>
               </div>
               {canAdmin && (
-                <button className="outline-btn small" type="button" onClick={() => deleteSchedule(ev.id)}>
-                  <Trash2 size={14} />
-                </button>
+                <div className="quick-actions">
+                  <button
+                    className="outline-btn small"
+                    type="button"
+                    onClick={() => {
+                      setEditScheduleId(ev.id);
+                      setTitle(ev.title);
+                      setWhen(toLocalInput(ev.starts_at));
+                      setLocation(ev.location || '');
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button className="outline-btn small" type="button" onClick={() => deleteSchedule(ev.id)}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               )}
             </div>
           ))}
@@ -270,30 +361,74 @@ export default function SettingsPanel({ supabase, competitionId, role, schedule,
 
       <div className="admin-panel" style={{ gridColumn: '1 / -1' }}>
         <h2>Sponsors & partners</h2>
-        <p>Shown on the public website under Sponsors.</p>
+        <p>Full sponsor CRUD with logo upload for the public Sponsors section.</p>
         {canAdmin && (
-          <form className="inline-form" onSubmit={addSponsor}>
-            <input required placeholder="Sponsor name" value={sponsorName} onChange={(e) => setSponsorName(e.target.value)} />
-            <select value={sponsorTier} onChange={(e) => setSponsorTier(e.target.value)}>
-              <option value="title">Title</option>
-              <option value="gold">Gold</option>
-              <option value="silver">Silver</option>
-              <option value="partner">Partner</option>
-            </select>
-            <button className="primary-btn" disabled={busy} type="submit">
-              Add sponsor
-            </button>
+          <form className="config-form entity-form" onSubmit={saveSponsor}>
+            <div className="entity-form-grid">
+              <label>
+                Sponsor name
+                <input required placeholder="Sponsor name" value={sponsorName} onChange={(e) => setSponsorName(e.target.value)} />
+              </label>
+              <label>
+                Tier
+                <select value={sponsorTier} onChange={(e) => setSponsorTier(e.target.value)}>
+                  <option value="title">Title</option>
+                  <option value="gold">Gold</option>
+                  <option value="silver">Silver</option>
+                  <option value="partner">Partner</option>
+                </select>
+              </label>
+              <label>
+                Website
+                <input type="url" placeholder="https://..." value={sponsorWebsite} onChange={(e) => setSponsorWebsite(e.target.value)} />
+              </label>
+              <ImageField
+                supabase={supabase}
+                label="Sponsor logo"
+                folder={`sponsors/${competitionId}`}
+                value={sponsorLogo}
+                onChange={setSponsorLogo}
+                setNotice={setNotice}
+                disabled={busy}
+              />
+            </div>
+            <div className="quick-actions">
+              <button className="primary-btn" disabled={busy} type="submit">
+                {editSponsorId ? 'Save sponsor' : 'Add sponsor'}
+              </button>
+              {editSponsorId && (
+                <button className="outline-btn" type="button" onClick={resetSponsorForm}>
+                  Cancel
+                </button>
+              )}
+            </div>
           </form>
         )}
         <div className="group-admin-grid" style={{ marginTop: 12 }}>
           {sponsors.map((s) => (
             <div className="group-admin-card" key={s.id}>
+              <div className="entity-thumb wide">{s.logo_url ? <img src={s.logo_url} alt="" /> : <span>{s.name.slice(0, 2)}</span>}</div>
               <strong>{s.name}</strong>
               <small>{s.tier}</small>
               {canAdmin && (
-                <button className="outline-btn small" type="button" onClick={() => deleteSponsor(s.id)}>
-                  Remove
-                </button>
+                <div className="quick-actions">
+                  <button
+                    className="outline-btn small"
+                    type="button"
+                    onClick={() => {
+                      setEditSponsorId(s.id);
+                      setSponsorName(s.name);
+                      setSponsorTier(s.tier);
+                      setSponsorLogo(s.logo_url || null);
+                      setSponsorWebsite(s.website_url || '');
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button className="outline-btn small" type="button" onClick={() => deleteSponsor(s.id)}>
+                    Remove
+                  </button>
+                </div>
               )}
             </div>
           ))}

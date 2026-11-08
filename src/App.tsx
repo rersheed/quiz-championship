@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import AdminDashboard from './admin/AdminDashboard';
+import ImageField from './admin/ImageField';
 import ResultsArchive from './components/ResultsArchive';
 import {
   DEFAULT_LOGO,
@@ -407,10 +408,14 @@ function App() {
                   Year
                   <input type="number" value={competition.year} onChange={(e) => setCompetition((c) => ({ ...c, year: Number(e.target.value) }))} />
                 </label>
-                <label>
-                  Competition logo URL
-                  <input type="url" placeholder="https://..." value={competition.logo_url || ''} onChange={(e) => setCompetition((c) => ({ ...c, logo_url: e.target.value }))} />
-                </label>
+                <ImageField
+                  supabase={supabase}
+                  label="Competition logo"
+                  folder={`competitions/${competition.id}`}
+                  value={competition.logo_url}
+                  onChange={(url) => setCompetition((c) => ({ ...c, logo_url: url }))}
+                  setNotice={setNotice}
+                />
                 <label>
                   Brand accent colour
                   <input type="color" value={competition.primary_color} onChange={(e) => setCompetition((c) => ({ ...c, primary_color: e.target.value }))} />
@@ -824,19 +829,22 @@ function App() {
                 Year
                 <input type="number" value={competition.year} onChange={(e) => setCompetition((c) => ({ ...c, year: Number(e.target.value) }))} />
               </label>
-              <label>
-                Competition logo URL
-                <input type="url" placeholder="https://..." value={competition.logo_url || ''} onChange={(e) => setCompetition((c) => ({ ...c, logo_url: e.target.value }))} />
-              </label>
-              <label>
-                Organizer logo URL
-                <input
-                  type="url"
-                  placeholder="https://..."
-                  value={competition.organizer_logo_url || ''}
-                  onChange={(e) => setCompetition((c) => ({ ...c, organizer_logo_url: e.target.value }))}
-                />
-              </label>
+              <ImageField
+                supabase={supabase}
+                label="Competition logo"
+                folder={`competitions/${competition.id}`}
+                value={competition.logo_url}
+                onChange={(url) => setCompetition((c) => ({ ...c, logo_url: url }))}
+                setNotice={setNotice}
+              />
+              <ImageField
+                supabase={supabase}
+                label="Organizer logo"
+                folder={`competitions/${competition.id}/organizer`}
+                value={competition.organizer_logo_url}
+                onChange={(url) => setCompetition((c) => ({ ...c, organizer_logo_url: url }))}
+                setNotice={setNotice}
+              />
               <label>
                 Brand accent colour
                 <input type="color" value={competition.primary_color} onChange={(e) => setCompetition((c) => ({ ...c, primary_color: e.target.value }))} />

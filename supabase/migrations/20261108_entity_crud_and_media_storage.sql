@@ -1,0 +1,3 @@
+-- Applied remotely via Supabase MCP as entity_crud_and_media_storage.
+-- Media bucket + admin CRUD helpers for groups, categories, stage templates, team assignment.
+-- See live database for authoritative state.
